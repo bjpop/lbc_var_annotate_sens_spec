@@ -8,6 +8,33 @@ Usage: python graphs.py clinvar.summary.tsv
 
 Note: Sift scores range from 1 to 0, but we convert the range
 to 0-1 to make it easier to plot. We need to relabel the X axis
+
+The input data set provides a score for each tool for each
+pathogenic and benign variant from ClinVar.
+
+For each tool we consider a range of scores as threshold values.
+Variants scored >= the threshold are considered to be classified
+by the tool as pathogenic, and the rest are considered to be classified
+by the tool as benign.
+
+We can then compute the true positive, false positive, true negative
+and false negative rates for each threshold value. From there we
+can compute sensitivity and specificity.
+
+For a given threshold value V:
+
+    - true positive (TP) is any ClinVar-pathogenic variant with score >= V
+    - false positive (FP) is any ClinVar-benign variant with score >= V
+    - true negative (TN) is any ClinVar-benign variant with score < V
+    - false negative (FN) is any ClinVar-pathogenic variant with score < V
+
+Percentage of Benign variants classified correctly:
+
+    specificity = TN / (TN + FP)
+
+Percentage of Pathogenic variants classied correctly:
+
+    sensitivity = TP / (TP + FN)
 '''
 
 import csv
@@ -21,6 +48,8 @@ def sensitivity(true_positives, false_negatives):
     return float(true_positives) / (true_positives + false_negatives)
 
 def compute_sens_spec(total_num_pathogenic, total_num_benign, num_pathogenic, num_benign):
+    # num_pathogenic and num_benign are counts of things we've seen below the threshold
+    # total_num_pathogenic and total_num_benign are total counts of ClinVar classified variants
     true_positives = total_num_pathogenic - num_pathogenic
     true_negatives = num_benign
     false_positives = total_num_benign - num_benign 
@@ -32,20 +61,21 @@ def compute_sens_spec(total_num_pathogenic, total_num_benign, num_pathogenic, nu
 def sens_spec(data, min_score=0.0, max_score=1.0, resolution=100):
     '''Compute sensitivity and specificity for a range of cutoff values'''
     # assumes input data is sorted
+
     total_num_pathogenic = len([item for item in data if item[1] == 'pathogenic'])
     total_num_benign = len([item for item in data if item[1] == 'benign'])
 
     range = max_score - min_score
     increment = float(range) / resolution
 
-    threshold = min_score + increment 
+    threshold = min_score
     results = []
     num_pathogenic = 0
     num_benign = 0
     current = min_score 
 
     for next_score, next_classification in data:
-        if next_score > threshold:
+        if next_score >= threshold:
             sens, spec = compute_sens_spec(total_num_pathogenic, total_num_benign, num_pathogenic, num_benign)
             results.append((threshold, sens, spec)) 
             threshold += increment
@@ -69,6 +99,8 @@ def read_input(clinvar_filename):
         reader = csv.DictReader(file, delimiter='\t')
         for row in reader:
             try:
+                # sift scores range from 1 to 0. We convert to
+                # the range 0 to 1 for convenience
                 sift_score = 1.0 - float(row['SIFT'])
                 polyphen_score = float(row['POLYPHEN'])
                 cadd_score = float(row['maxCADD'])
@@ -87,7 +119,7 @@ def read_input(clinvar_filename):
                 gerp.append((gerp_score, classification))
                 fathmm.append((fathmm_score, classification))
 
-    # sort by score
+    # sort in ascending order by score
     sift.sort()
     polyphen.sort()
     cadd.sort()
@@ -107,7 +139,7 @@ def plot_graph(algorithm, values, legend_loc='lower center', min_x=0.0, max_x=1.
     plt.plot(thresholds, spec, label='specificity: TN/(TN + FP)')
     plt.legend(loc=legend_loc)
     plt.xlim([min_x, max_x]) 
-    plt.ylim([0,1]) 
+    plt.ylim([0, 1]) 
     plt.savefig(algorithm + '.png')
     plt.close()
 
