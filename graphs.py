@@ -88,6 +88,15 @@ def sens_spec(data, min_score=0.0, max_score=1.0, resolution=100):
     results.append((threshold, sens, spec)) 
     return results
 
+def get_score(row, name, action):
+    try:
+        score = float(row[name])
+    except:
+        pass
+    else:
+        action(score)
+    
+
 def read_input(clinvar_filename):
     sift = []
     polyphen = []
@@ -98,26 +107,15 @@ def read_input(clinvar_filename):
     with open(clinvar_filename) as file:
         reader = csv.DictReader(file, delimiter='\t')
         for row in reader:
-            try:
-                # sift scores range from 1 to 0. We convert to
-                # the range 0 to 1 for convenience
-                sift_score = 1.0 - float(row['SIFT'])
-                polyphen_score = float(row['POLYPHEN'])
-                cadd_score = float(row['maxCADD'])
-                pri_ph_cons_score = float(row['priPhCons'])
-                gerp_score = float(row['GerpRS'])
-                fathmm_score = float(row['FATHMM'])
-                classification = row['benign']
-            except:
-                # ignore any row where we are missing scores 
-                pass
-            else:
-                sift.append((sift_score, classification))
-                polyphen.append((polyphen_score, classification))
-                cadd.append((cadd_score, classification))
-                pri_ph_cons.append((pri_ph_cons_score, classification))
-                gerp.append((gerp_score, classification))
-                fathmm.append((fathmm_score, classification))
+            # get the ClinVar classification of this variant
+            classification = row['benign']
+            # get the score for each tool (where available)
+            get_score(row, 'SIFT', lambda score: sift.append((1.0 - score, classification)))
+            get_score(row, 'POLYPHEN', lambda score: polyphen.append((score, classification)))
+            get_score(row, 'maxCADD', lambda score: cadd.append((score, classification)))
+            get_score(row, 'priPhCons', lambda score: pri_ph_cons.append((score, classification)))
+            get_score(row, 'GerpRS', lambda score: gerp.append((score, classification)))
+            get_score(row, 'FATHMM', lambda score: fathmm.append((score, classification)))
 
     # sort in ascending order by score
     sift.sort()
