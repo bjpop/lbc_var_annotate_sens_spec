@@ -40,6 +40,21 @@ Percentage of Pathogenic variants classied correctly:
 import csv
 import sys
 import matplotlib.pyplot as plt
+from argparse import ArgumentParser
+
+VERSION = '1.0'
+
+def parse_args():
+    'Parse the command line arguments for the program.'
+    parser = ArgumentParser(
+        description="Compute sensitivity and specificity for various variant effect prediction tools")
+    parser.add_argument(
+        '--version', action='version', version='%(prog)s ' + VERSION)
+    parser.add_argument(
+        '--dataset', type=str, help='Name of variant truth dataset', required=False)
+    parser.add_argument(
+        'variants', type=str, help='variants truth set')
+    return parser.parse_args()
 
 def specificity(true_negatives, false_positives):
     return float(true_negatives) / (true_negatives + false_positives)
@@ -127,24 +142,59 @@ def read_input(clinvar_filename):
 
     return sift, polyphen, cadd, pri_ph_cons, gerp, fathmm
 
-def plot_graph(algorithm, values, legend_loc='lower center', min_x=0.0, max_x=1.0):
-    plt.xlabel("Score Threshold")
-    plt.title(algorithm)
-    thresholds = [v[0] for v in values]
-    sens = [v[1] for v in values]
-    spec = [v[2] for v in values]
-    plt.plot(thresholds, sens, label='sensitivity: TP/(TP + FN)')
-    plt.plot(thresholds, spec, label='specificity: TN/(TN + FP)')
-    plt.legend(loc=legend_loc)
-    plt.xlim([min_x, max_x]) 
-    plt.ylim([0, 1]) 
-    plt.savefig(algorithm + '.png')
-    plt.close()
+
+class Plot(object):
+
+    def __init__(self, dataset_name):
+        self.dataset_name = dataset_name
+
+    def roc(self, values, label):
+        sens = [v[1] for v in values]
+        spec = [1.0 - v[2] for v in values]
+        title = "ROC"
+        if self.dataset_name is not None:
+            title += " (" + self.dataset_name + ")"
+        plt.title(title)
+        plt.plot(spec, sens, label=label)
+    
+    def plot_roc_curves(self, sift_results, polyphen_results, cadd_results, pri_ph_cons_results, gerp_results, fathmm_results):
+        plt.xlabel("1-specificity")
+        plt.ylabel("sensitivity")
+    
+        self.roc(sift_results, "sift")
+        self.roc(polyphen_results, "polyphen")
+        self.roc(cadd_results, "cadd")
+        self.roc(pri_ph_cons_results, "pri_ph_cons")
+        self.roc(gerp_results, "gerp")
+        self.roc(fathmm_results, "fathmm")
+        plt.legend(loc="lower right")
+    
+        plt.savefig("roc.png")
+        plt.close()
+
+    def plot_sens_spec_graph(self, algorithm, values, legend_loc='lower center', min_x=0.0, max_x=1.0):
+        plt.xlabel("score threshold")
+        thresholds = [v[0] for v in values]
+        sens = [v[1] for v in values]
+        spec = [v[2] for v in values]
+        plt.plot(thresholds, sens, label='sensitivity: TP/(TP + FN)')
+        plt.plot(thresholds, spec, label='specificity: TN/(TN + FP)')
+        plt.legend(loc=legend_loc)
+        title = algorithm + " sensitivity and specificity"
+        if self.dataset_name is not None:
+            title += " (" + self.dataset_name + ")"
+        plt.title(title)
+        plt.xlim([min_x, max_x]) 
+        plt.ylim([0, 1]) 
+        plt.savefig(algorithm + '.png')
+        plt.close()
+
+
+    
 
 def main():
-    if len(sys.argv) < 2:
-        exit("usage: graphs.py <clinvar_stats.tsv>")
-    sift, polyphen, cadd, pri_ph_cons, gerp, fathmm = read_input(sys.argv[1])
+    args = parse_args()
+    sift, polyphen, cadd, pri_ph_cons, gerp, fathmm = read_input(args.variants)
 
     max_cadd = cadd[-1][0]
     max_gerp = gerp[-1][0]
@@ -156,12 +206,16 @@ def main():
     gerp_results = sens_spec(gerp, max_score=max_gerp)
     fathmm_results = sens_spec(fathmm)
 
-    plot_graph('sift', sift_results, legend_loc='center left')
-    plot_graph('polyphen', polyphen_results)
-    plot_graph('cadd', cadd_results, legend_loc='center right', max_x=max_cadd)
-    plot_graph('pri_ph_cons', pri_ph_cons_results)
-    plot_graph('gerp', gerp_results, legend_loc='center right', max_x=max_gerp)
-    plot_graph('fathmm', fathmm_results)
+    plotter = Plot(args.dataset)
+
+    plotter.plot_sens_spec_graph('sift', sift_results, legend_loc='center left')
+    plotter.plot_sens_spec_graph('polyphen', polyphen_results)
+    plotter.plot_sens_spec_graph('cadd', cadd_results, legend_loc='center right', max_x=max_cadd)
+    plotter.plot_sens_spec_graph('pri_ph_cons', pri_ph_cons_results)
+    plotter.plot_sens_spec_graph('gerp', gerp_results, legend_loc='center right', max_x=max_gerp)
+    plotter.plot_sens_spec_graph('fathmm', fathmm_results)
+
+    plotter.plot_roc_curves(sift_results, polyphen_results, cadd_results, pri_ph_cons_results, gerp_results, fathmm_results)
 
 if __name__ == '__main__':
     main()
